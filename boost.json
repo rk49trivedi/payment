@@ -1,0 +1,18 @@
+{
+    "agents": [
+        "claude_code",
+        "cursor",
+        "gemini",
+        "opencode",
+        "phpstorm"
+    ],
+    "editors": [
+        "claude_code",
+        "cursor",
+        "gemini",
+        "opencode",
+        "phpstorm",
+        "vscode"
+    ],
+    "guidelines": []
+}
