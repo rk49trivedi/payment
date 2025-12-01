@@ -140,5 +140,133 @@ class StripeACHController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Get payment method details by ID
+     * Called by userdashboard backend to retrieve bank account info
+     */
+    public function getPaymentMethodDetails(Request $request): JsonResponse
+    {
+        try {
+            $paymentMethodId = $request->input('payment_method_id');
+
+            if (empty($paymentMethodId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Payment method ID is required',
+                ], 400);
+            }
+
+            $paymentMethod = $this->stripeService->getPaymentMethod($paymentMethodId);
+            $bankAccount = $paymentMethod->us_bank_account;
+
+            return response()->json([
+                'success' => true,
+                'payment_method_id' => $paymentMethodId,
+                'bank_name' => $bankAccount->bank_name ?? '',
+                'routing_number' => $bankAccount->routing_number ?? '',
+                'last4' => $bankAccount->last4 ?? '',
+                'account_type' => $bankAccount->account_type ?? '',
+                'account_holder_type' => $bankAccount->account_holder_type ?? '',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Get payment method details failed', [
+                'error' => $e->getMessage(),
+                'payment_method_id' => $request->input('payment_method_id'),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create ACH bank token (Legacy flow - for backward compatibility)
+     * This wraps the legacy Token API for older code paths
+     */
+    public function createBankToken(Request $request): JsonResponse
+    {
+        try {
+            \Stripe\Stripe::setApiKey(config('services.stripe.secret'));
+
+            $token = \Stripe\Token::create([
+                'bank_account' => [
+                    'country' => 'US',
+                    'currency' => 'usd',
+                    'account_holder_name' => $request->input('account_holder_name'),
+                    'account_holder_type' => $request->input('account_holder_type', 'company'),
+                    'routing_number' => $request->input('routing_number'),
+                    'account_number' => $request->input('account_number'),
+                ],
+            ]);
+
+            // Create customer with source
+            $customer = \Stripe\Customer::create([
+                'description' => 'Simple Statement',
+                'source' => $token->id,
+            ]);
+
+            // Attempt to verify (will fail in production without actual micro-deposits)
+            $bankAccount = \Stripe\Customer::retrieveSource($customer->id, $token->bank_account->id);
+
+            return response()->json([
+                'success' => true,
+                'customer_id' => $customer->id,
+                'bank_id' => $token->bank_account->id,
+                'bank_name' => $token->bank_account->bank_name,
+                'routing_number' => $token->bank_account->routing_number,
+                'account_number' => $request->input('account_number'),
+                'status' => $bankAccount->status,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create bank token failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Verify bank account with micro-deposit amounts (Legacy flow)
+     */
+    public function verifyBankAccount(Request $request): JsonResponse
+    {
+        try {
+            \Stripe\Stripe::setApiKey(config('services.stripe.secret'));
+
+            $customerId = $request->input('customer_id');
+            $bankId = $request->input('bank_id');
+            $amounts = $request->input('amounts', [32, 45]); // Default test amounts
+
+            $bankAccount = \Stripe\Customer::retrieveSource($customerId, $bankId);
+            $bankAccount->verify(['amounts' => $amounts]);
+
+            return response()->json([
+                'success' => true,
+                'status' => $bankAccount->status,
+                'verified' => $bankAccount->status === 'verified',
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Verify bank account failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+                'bank_id' => $request->input('bank_id'),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 
