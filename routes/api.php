@@ -14,6 +14,9 @@ Route::prefix('stripe')->group(function () {
     // Legacy Token API (backward compatibility - deprecated by Stripe May 2026)
     Route::post('/create-bank-token', [StripeACHController::class, 'createBankToken']);
     Route::post('/verify-bank-account', [StripeACHController::class, 'verifyBankAccount']);
+
+    // Customer creation (for card signups)
+    Route::post('/create-customer-with-card', [StripeACHController::class, 'createCustomerWithCard']);
 });
 
 // Stripe Webhook (configure in Stripe Dashboard)

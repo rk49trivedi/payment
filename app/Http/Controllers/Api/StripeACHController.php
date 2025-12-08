@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\StripeACHService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 class StripeACHController extends Controller
@@ -87,25 +86,15 @@ class StripeACHController extends Controller
                 $paymentMethod = $this->stripeService->getPaymentMethod($paymentMethodId);
                 $bankAccount = $paymentMethod->us_bank_account;
 
-                // If user_id provided, update the customer record
-                if ($userId) {
-                    DB::table('customers')->where('customer_id', $userId)->update([
-                        'customer_id_stripe' => $customerId,
-                        'payment_method_id' => $paymentMethodId,
-                        'setup_intent_id' => $setupIntentId,
-                        'bank_account_status' => 'verified',
-                        'ach_info' => $paymentMethodId,
-                        'bank_name' => $bankAccount->bank_name ?? '',
-                        'routing' => $bankAccount->routing_number ?? '',
-                        'account_number' => '****' . ($bankAccount->last4 ?? ''),
-                    ]);
-                }
+                // Note: Database operations are handled by the calling service (userdashboard)
+                // This microservice only handles Stripe API operations
 
                 return response()->json([
                     'success' => true,
                     'message' => 'Bank account connected successfully',
                     'payment_method_id' => $paymentMethodId,
                     'bank_name' => $bankAccount->bank_name ?? '',
+                    'routing_number' => $bankAccount->routing_number ?? '',
                     'last4' => $bankAccount->last4 ?? '',
                     'account_type' => $bankAccount->account_type ?? '',
                     'account_holder_type' => $bankAccount->account_holder_type ?? '',
@@ -260,6 +249,54 @@ class StripeACHController extends Controller
                 'error' => $e->getMessage(),
                 'customer_id' => $request->input('customer_id'),
                 'bank_id' => $request->input('bank_id'),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a Stripe Customer with a card token
+     * Used for credit card signups (not ACH)
+     * Centralized Stripe operation - no database operations
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createCustomerWithCard(Request $request): JsonResponse
+    {
+        try {
+            $email = $request->input('email');
+            $cardToken = $request->input('stripe_token');
+            $metadata = $request->input('metadata', []);
+
+            if (empty($cardToken)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Card token is required',
+                ], 400);
+            }
+
+            // Use service method for centralized Stripe operations
+            $customer = $this->stripeService->createCustomerWithCard([
+                'email' => $email,
+                'stripe_token' => $cardToken,
+                'metadata' => $metadata,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'customer_id' => $customer->id,
+                'customer_email' => $customer->email,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create customer with card failed', [
+                'error' => $e->getMessage(),
+                'email' => $request->input('email'),
             ]);
 
             return response()->json([

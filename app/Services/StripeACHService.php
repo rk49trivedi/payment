@@ -9,6 +9,7 @@ use Stripe\PaymentIntent;
 use Stripe\PaymentMethod;
 use Stripe\Subscription;
 use Stripe\Price;
+use Stripe\Source;
 
 class StripeACHService
 {
@@ -160,6 +161,27 @@ class StripeACHService
         }
 
         return Subscription::create($params);
+    }
+
+    /**
+     * Create a Customer with a card token (for credit card signups)
+     * This is not ACH-related but centralized here for consistency
+     */
+    public function createCustomerWithCard(array $data): Customer
+    {
+        $customer = $this->createCustomer([
+            'email' => $data['email'] ?? null,
+            'metadata' => $data['metadata'] ?? [],
+        ]);
+
+        // Attach card token to customer
+        if (!empty($data['stripe_token'])) {
+            Customer::createSource($customer->id, [
+                'source' => $data['stripe_token'],
+            ]);
+        }
+
+        return $customer;
     }
 }
 
