@@ -305,5 +305,239 @@ class StripeACHController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Create a PaymentIntent (for card or ACH payments)
+     * Replaces Charge::create for both card and ACH payments
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createPaymentIntent(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $amountCents = (int) $request->input('amount');
+            $paymentMethodTypes = $request->input('payment_method_types', ['card']);
+            $paymentMethodId = $request->input('payment_method_id');
+            $metadata = $request->input('metadata', []);
+            $confirm = $request->input('confirm', false);
+
+            if (empty($customerId) || empty($amountCents)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Customer ID and amount are required',
+                ], 400);
+            }
+
+            $paymentIntent = $this->stripeService->createPaymentIntent(
+                $customerId,
+                $amountCents,
+                $paymentMethodTypes,
+                $paymentMethodId,
+                $metadata,
+                $confirm
+            );
+
+            return response()->json([
+                'success' => true,
+                'payment_intent_id' => $paymentIntent->id,
+                'client_secret' => $paymentIntent->client_secret,
+                'status' => $paymentIntent->status,
+                'amount' => $paymentIntent->amount,
+                'currency' => $paymentIntent->currency,
+                'payment_intent' => $paymentIntent,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create PaymentIntent failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a Price (replaces Plan::create)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createPrice(Request $request): JsonResponse
+    {
+        try {
+            $amountCents = (int) $request->input('amount');
+            $interval = $request->input('interval', 'month');
+            $intervalCount = (int) $request->input('interval_count', 1);
+            $productName = $request->input('product_name');
+
+            if (empty($amountCents)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Amount is required',
+                ], 400);
+            }
+
+            $price = $this->stripeService->createPrice(
+                $amountCents,
+                $interval,
+                $intervalCount,
+                $productName
+            );
+
+            return response()->json([
+                'success' => true,
+                'price_id' => $price->id,
+                'unit_amount' => $price->unit_amount,
+                'currency' => $price->currency,
+                'recurring' => $price->recurring,
+                'product' => $price->product,
+                'price' => $price,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create Price failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a Subscription with Price (replaces Plan-based subscriptions)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createSubscription(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $priceId = $request->input('price_id');
+            $paymentMethodId = $request->input('payment_method_id');
+            $coupon = $request->input('coupon');
+            $paymentMethodTypes = $request->input('payment_method_types', ['card', 'us_bank_account']);
+
+            if (empty($customerId) || empty($priceId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Customer ID and Price ID are required',
+                ], 400);
+            }
+
+            $subscription = $this->stripeService->createSubscription(
+                $customerId,
+                $priceId,
+                $paymentMethodId,
+                $coupon,
+                $paymentMethodTypes
+            );
+
+            return response()->json([
+                'success' => true,
+                'subscription_id' => $subscription->id,
+                'status' => $subscription->status,
+                'current_period_start' => $subscription->current_period_start,
+                'current_period_end' => $subscription->current_period_end,
+                'cancel_at_period_end' => $subscription->cancel_at_period_end,
+                'items' => $subscription->items->data,
+                'subscription' => $subscription,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create Subscription failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Get Subscription details
+     *
+     * @param string $subscriptionId
+     * @return JsonResponse
+     */
+    public function getSubscription(string $subscriptionId): JsonResponse
+    {
+        try {
+            $subscription = $this->stripeService->getSubscription($subscriptionId);
+
+            return response()->json([
+                'success' => true,
+                'subscription_id' => $subscription->id,
+                'status' => $subscription->status,
+                'current_period_start' => $subscription->current_period_start,
+                'current_period_end' => $subscription->current_period_end,
+                'cancel_at_period_end' => $subscription->cancel_at_period_end,
+                'items' => $subscription->items->data,
+                'subscription' => $subscription,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Get Subscription failed', [
+                'error' => $e->getMessage(),
+                'subscription_id' => $subscriptionId,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Cancel Subscription
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function cancelSubscription(Request $request): JsonResponse
+    {
+        try {
+            $subscriptionId = $request->input('subscription_id');
+            $atPeriodEnd = $request->input('at_period_end', false);
+
+            if (empty($subscriptionId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Subscription ID is required',
+                ], 400);
+            }
+
+            $subscription = $this->stripeService->cancelSubscription($subscriptionId, $atPeriodEnd);
+
+            return response()->json([
+                'success' => true,
+                'subscription_id' => $subscription->id,
+                'status' => $subscription->status,
+                'canceled_at' => $subscription->canceled_at,
+                'cancel_at_period_end' => $subscription->cancel_at_period_end,
+                'subscription' => $subscription,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Cancel Subscription failed', [
+                'error' => $e->getMessage(),
+                'subscription_id' => $request->input('subscription_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 

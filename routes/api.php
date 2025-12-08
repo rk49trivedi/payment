@@ -17,6 +17,17 @@ Route::prefix('stripe')->group(function () {
 
     // Customer creation (for card signups)
     Route::post('/create-customer-with-card', [StripeACHController::class, 'createCustomerWithCard']);
+
+    // Payment Intents (replaces Charge::create)
+    Route::post('/create-payment-intent', [StripeACHController::class, 'createPaymentIntent']);
+
+    // Prices (replaces Plan::create)
+    Route::post('/create-price', [StripeACHController::class, 'createPrice']);
+
+    // Subscriptions (with Price support)
+    Route::post('/create-subscription', [StripeACHController::class, 'createSubscription']);
+    Route::get('/get-subscription/{subscriptionId}', [StripeACHController::class, 'getSubscription']);
+    Route::post('/cancel-subscription', [StripeACHController::class, 'cancelSubscription']);
 });
 
 // Stripe Webhook (configure in Stripe Dashboard)

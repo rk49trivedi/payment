@@ -103,6 +103,36 @@ class StripeACHService
     }
 
     /**
+     * Create a PaymentIntent for card payment (replaces Charge::create for cards)
+     * Supports both card and ACH payments based on payment_method_types
+     */
+    public function createPaymentIntent(
+        string $customerId,
+        int $amountCents,
+        array $paymentMethodTypes = ['card'],
+        ?string $paymentMethodId = null,
+        array $metadata = [],
+        bool $confirm = false
+    ): PaymentIntent {
+        $params = [
+            'amount' => $amountCents,
+            'currency' => 'usd',
+            'customer' => $customerId,
+            'payment_method_types' => $paymentMethodTypes,
+            'metadata' => $metadata,
+        ];
+
+        if ($paymentMethodId) {
+            $params['payment_method'] = $paymentMethodId;
+            if ($confirm) {
+                $params['confirm'] = true;
+            }
+        }
+
+        return PaymentIntent::create($params);
+    }
+
+    /**
      * Confirm a PaymentIntent
      */
     public function confirmPaymentIntent(string $paymentIntentId, ?string $paymentMethodId = null): PaymentIntent
@@ -142,15 +172,21 @@ class StripeACHService
 
     /**
      * Create a Subscription with default payment method
+     * Supports coupon/promocode and both card and ACH payment methods
      */
-    public function createSubscription(string $customerId, string $priceId, ?string $paymentMethodId = null): Subscription
-    {
+    public function createSubscription(
+        string $customerId,
+        string $priceId,
+        ?string $paymentMethodId = null,
+        ?string $coupon = null,
+        array $paymentMethodTypes = ['card', 'us_bank_account']
+    ): Subscription {
         $params = [
             'customer' => $customerId,
             'items' => [['price' => $priceId]],
             'payment_behavior' => 'default_incomplete',
             'payment_settings' => [
-                'payment_method_types' => ['us_bank_account'],
+                'payment_method_types' => $paymentMethodTypes,
                 'save_default_payment_method' => 'on_subscription',
             ],
             'expand' => ['latest_invoice.payment_intent'],
@@ -160,7 +196,33 @@ class StripeACHService
             $params['default_payment_method'] = $paymentMethodId;
         }
 
+        if ($coupon) {
+            $params['coupon'] = $coupon;
+        }
+
         return Subscription::create($params);
+    }
+
+    /**
+     * Retrieve a Subscription
+     */
+    public function getSubscription(string $subscriptionId): Subscription
+    {
+        return Subscription::retrieve($subscriptionId);
+    }
+
+    /**
+     * Cancel a Subscription
+     */
+    public function cancelSubscription(string $subscriptionId, bool $atPeriodEnd = false): Subscription
+    {
+        $subscription = Subscription::retrieve($subscriptionId);
+        
+        if ($atPeriodEnd) {
+            return $subscription->update(['cancel_at_period_end' => true]);
+        }
+        
+        return $subscription->cancel();
     }
 
     /**
