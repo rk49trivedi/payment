@@ -287,10 +287,31 @@ class StripeACHController extends Controller
                 'metadata' => $metadata,
             ]);
 
+            // Get default payment method ID if available
+            $paymentMethodId = null;
+            if ($customer->invoice_settings && $customer->invoice_settings->default_payment_method) {
+                $paymentMethodId = is_string($customer->invoice_settings->default_payment_method)
+                    ? $customer->invoice_settings->default_payment_method
+                    : $customer->invoice_settings->default_payment_method->id;
+            } else {
+                // Fallback: list payment methods and get the first one
+                $paymentMethods = \Stripe\PaymentMethod::all([
+                    'customer' => $customer->id,
+                    'type' => 'card',
+                    'limit' => 1,
+                ]);
+                
+                if (!empty($paymentMethods->data)) {
+                    $paymentMethodId = $paymentMethods->data[0]->id;
+                }
+            }
+
             return response()->json([
                 'success' => true,
                 'customer_id' => $customer->id,
                 'customer_email' => $customer->email,
+                'payment_method_id' => $paymentMethodId,
+                'payment_method_type' => 'card',
             ]);
 
         } catch (\Exception $e) {
