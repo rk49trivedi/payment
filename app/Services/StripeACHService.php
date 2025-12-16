@@ -389,5 +389,141 @@ class StripeACHService
         // Retrieve customer with expanded default payment method
         return $this->getCustomer($customer->id);
     }
+
+    /**
+     * Migrate bank account token (ba_*) to PaymentMethod (pm_*)
+     * Used for data migration from deprecated Token API to PaymentMethod API
+     *
+     * Note: We cannot directly convert ba_* sources to pm_* PaymentMethods without
+     * the full account number. This method checks if a PaymentMethod already exists
+     * for the bank account, or marks it for manual update via Financial Connections.
+     *
+     * @param string $customerId Stripe customer ID
+     * @param string $bankAccountId Bank account ID (ba_*)
+     * @return array|null Returns array with payment_method_id or null on failure
+     */
+    public function migrateBankAccountToPaymentMethod(string $customerId, string $bankAccountId): ?array
+    {
+        try {
+            // Retrieve the bank account source
+            $customer = Customer::retrieve($customerId);
+            $bankAccount = $customer->sources->retrieve($bankAccountId);
+
+            if (!$bankAccount || $bankAccount->object !== 'bank_account') {
+                Log::error('Invalid bank account', [
+                    'customer_id' => $customerId,
+                    'bank_account_id' => $bankAccountId,
+                ]);
+                return null;
+            }
+
+            // Check if customer already has a PaymentMethod for this bank account
+            // by matching routing number and last4
+            $paymentMethods = PaymentMethod::all([
+                'customer' => $customerId,
+                'type' => 'us_bank_account',
+            ]);
+
+            foreach ($paymentMethods->data as $pm) {
+                if ($pm->us_bank_account &&
+                    $pm->us_bank_account->routing_number === $bankAccount->routing_number &&
+                    $pm->us_bank_account->last4 === $bankAccount->last4) {
+                    // PaymentMethod already exists for this bank account
+                    return [
+                        'success' => true,
+                        'payment_method_id' => $pm->id,
+                        'bank_account_id' => $bankAccountId,
+                        'customer_id' => $customerId,
+                        'bank_name' => $pm->us_bank_account->bank_name ?? $bankAccount->bank_name ?? '',
+                        'routing_number' => $pm->us_bank_account->routing_number ?? '',
+                        'last4' => $pm->us_bank_account->last4 ?? '',
+                        'status' => 'existing',
+                        'message' => 'PaymentMethod already exists for this bank account',
+                    ];
+                }
+            }
+
+            // Cannot create PaymentMethod without full account number
+            // The ba_* source only has last4, not the full account number
+            // Customer will need to update via Financial Connections
+            return [
+                'success' => false,
+                'bank_account_id' => $bankAccountId,
+                'customer_id' => $customerId,
+                'message' => 'Cannot migrate ba_* to pm_* without full account number. Customer must update via Financial Connections.',
+                'requires_update' => true,
+                'bank_name' => $bankAccount->bank_name ?? '',
+                'routing_number' => $bankAccount->routing_number ?? '',
+                'last4' => $bankAccount->last4 ?? '',
+                'status' => $bankAccount->status ?? 'unknown',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Bank account migration failed', [
+                'customer_id' => $customerId,
+                'bank_account_id' => $bankAccountId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return null;
+        }
+    }
+
+    /**
+     * Backfill mandate for existing PaymentMethod
+     * Mandates are required for ACH Direct Debits
+     *
+     * @param string $paymentMethodId PaymentMethod ID (pm_*)
+     * @return array|null Returns array with mandate information or null on failure
+     */
+    public function backfillMandateForPaymentMethod(string $paymentMethodId): ?array
+    {
+        try {
+            $paymentMethod = PaymentMethod::retrieve($paymentMethodId);
+
+            if (!$paymentMethod || $paymentMethod->type !== 'us_bank_account') {
+                Log::error('Invalid PaymentMethod for mandate backfill', [
+                    'payment_method_id' => $paymentMethodId,
+                ]);
+                return null;
+            }
+
+            // Check if mandate already exists
+            if (isset($paymentMethod->us_bank_account->mandate)) {
+                $mandate = is_string($paymentMethod->us_bank_account->mandate)
+                    ? \Stripe\Mandate::retrieve($paymentMethod->us_bank_account->mandate)
+                    : $paymentMethod->us_bank_account->mandate;
+
+                return [
+                    'success' => true,
+                    'mandate_id' => $mandate->id,
+                    'mandate_status' => $mandate->status ?? 'active',
+                    'payment_method_id' => $paymentMethodId,
+                    'message' => 'Mandate already exists',
+                ];
+            }
+
+            // Note: Mandates are typically created automatically when using Financial Connections
+            // or when creating a PaymentIntent with ACH. For existing bank accounts migrated
+            // from Token API, we may need to create a mandate through a PaymentIntent.
+            // However, Stripe doesn't provide a direct API to create mandates for existing
+            // PaymentMethods. The mandate will be created automatically on the next payment.
+
+            return [
+                'success' => true,
+                'payment_method_id' => $paymentMethodId,
+                'message' => 'Mandate will be created automatically on next payment',
+                'note' => 'For existing PaymentMethods, mandates are created automatically when used in a PaymentIntent',
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Mandate backfill failed', [
+                'payment_method_id' => $paymentMethodId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return null;
+        }
+    }
 }
 

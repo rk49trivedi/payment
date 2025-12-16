@@ -28,6 +28,10 @@ Route::prefix('stripe')->group(function () {
     Route::post('/create-subscription', [StripeACHController::class, 'createSubscription']);
     Route::get('/get-subscription/{subscriptionId}', [StripeACHController::class, 'getSubscription']);
     Route::post('/cancel-subscription', [StripeACHController::class, 'cancelSubscription']);
+
+    // Data Migration (for ba_* to pm_* migration)
+    Route::post('/migrate-bank-account', [StripeACHController::class, 'migrateBankAccountToPaymentMethod']);
+    Route::post('/backfill-mandate', [StripeACHController::class, 'backfillMandateForPaymentMethod']);
 });
 
 // Stripe Webhook (configure in Stripe Dashboard)

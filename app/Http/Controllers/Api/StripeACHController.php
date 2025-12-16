@@ -560,5 +560,84 @@ class StripeACHController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * Migrate bank account token (ba_*) to PaymentMethod (pm_*)
+     * Used for data migration from deprecated Token API to PaymentMethod API
+     */
+    public function migrateBankAccountToPaymentMethod(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $bankAccountId = $request->input('bank_account_id');
+
+            if (empty($customerId) || empty($bankAccountId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id and bank_account_id are required',
+                ], 400);
+            }
+
+            $result = $this->stripeService->migrateBankAccountToPaymentMethod($customerId, $bankAccountId);
+
+            if ($result) {
+                return response()->json($result);
+            }
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to migrate bank account',
+            ], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Migrate bank account failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Backfill mandate for existing PaymentMethod
+     * Mandates are required for ACH Direct Debits
+     */
+    public function backfillMandateForPaymentMethod(Request $request): JsonResponse
+    {
+        try {
+            $paymentMethodId = $request->input('payment_method_id');
+
+            if (empty($paymentMethodId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'payment_method_id is required',
+                ], 400);
+            }
+
+            $result = $this->stripeService->backfillMandateForPaymentMethod($paymentMethodId);
+
+            if ($result) {
+                return response()->json($result);
+            }
+
+            return response()->json([
+                'success' => false,
+                'error' => 'Failed to backfill mandate',
+            ], 400);
+
+        } catch (\Exception $e) {
+            Log::error('Backfill mandate failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 
