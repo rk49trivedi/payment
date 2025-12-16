@@ -163,9 +163,12 @@ class StripeACHService
 
         if ($paymentMethodId) {
             $params['payment_method'] = $paymentMethodId;
-            if ($confirm) {
-                $params['confirm'] = true;
-            }
+        }
+        
+        // Allow confirm=true even when paymentMethodId is null
+        // Stripe will use customer's default payment method in this case
+        if ($confirm) {
+            $params['confirm'] = true;
         }
 
         return PaymentIntent::create($params);
