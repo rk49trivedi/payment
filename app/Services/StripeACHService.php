@@ -12,6 +12,7 @@ use Stripe\Price;
 use Stripe\Source;
 use Stripe\Invoice;
 use Stripe\Token;
+use Stripe\Coupon;
 use Illuminate\Support\Facades\Log;
 
 class StripeACHService
@@ -523,6 +524,48 @@ class StripeACHService
                 'trace' => $e->getTraceAsString(),
             ]);
             return null;
+        }
+    }
+
+    /**
+     * Delete a Coupon (replaces Coupon::retrieve->delete)
+     *
+     * @param string $couponId The coupon ID or code to delete
+     * @return array Returns array with success status or error
+     */
+    public function deleteCoupon(string $couponId): array
+    {
+        try {
+            // First, try to retrieve by ID (for percent_off or amount_off coupons)
+            try {
+                $coupon = Coupon::retrieve($couponId);
+                $coupon->delete();
+                return [
+                    'success' => true,
+                    'message' => 'Coupon deleted successfully',
+                    'coupon_id' => $couponId,
+                ];
+            } catch (\Exception $e) {
+                // If retrieve fails, it might be a coupon code (for duration=forever, once, or repeating)
+                // Coupon codes require different handling - they're not directly deletable
+                // but we can check if it's a promotion code
+                return [
+                    'success' => false,
+                    'error' => 'Coupon not found or cannot be deleted. For coupon codes, please deactivate via Stripe Dashboard.',
+                    'coupon_id' => $couponId,
+                ];
+            }
+        } catch (\Exception $e) {
+            Log::error('Coupon deletion failed', [
+                'coupon_id' => $couponId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'coupon_id' => $couponId,
+            ];
         }
     }
 }

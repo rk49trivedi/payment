@@ -32,6 +32,31 @@ Route::prefix('stripe')->group(function () {
     // Data Migration (for ba_* to pm_* migration)
     Route::post('/migrate-bank-account', [StripeACHController::class, 'migrateBankAccountToPaymentMethod']);
     Route::post('/backfill-mandate', [StripeACHController::class, 'backfillMandateForPaymentMethod']);
+
+    // Payment Intents listing (replaces Charge::all)
+    Route::post('/list-payment-intents', [StripeACHController::class, 'listPaymentIntents']);
+
+    // Payment Methods listing (replaces Customer::allSources)
+    Route::post('/list-payment-methods', [StripeACHController::class, 'listPaymentMethods']);
+
+    // Payment Method detach (replaces Customer::retrieveSource operations)
+    Route::post('/detach-payment-method', [StripeACHController::class, 'detachPaymentMethod']);
+
+    // Payment Method attach (replaces Customer::createSource)
+    Route::post('/attach-payment-method', [StripeACHController::class, 'attachPaymentMethod']);
+
+    // Payment Method create from token (replaces Customer::createSource)
+    Route::post('/create-payment-method-from-token', [StripeACHController::class, 'createPaymentMethodFromToken']);
+
+    // Subscription Schedule operations
+    Route::get('/get-subscription-schedule/{scheduleId}', [StripeACHController::class, 'getSubscriptionSchedule']);
+    Route::post('/update-subscription-schedule', [StripeACHController::class, 'updateSubscriptionSchedule']);
+    Route::post('/create-subscription-schedule', [StripeACHController::class, 'createSubscriptionSchedule']);
+    Route::post('/cancel-subscription-schedule', [StripeACHController::class, 'cancelSubscriptionSchedule']);
+
+    // Coupon operations (replaces Coupon::all, Coupon::retrieve->delete, Coupon::create)
+    Route::post('/create-coupon', [StripeACHController::class, 'createCoupon']);
+    Route::post('/delete-coupon', [StripeACHController::class, 'deleteCoupon']);
 });
 
 // Stripe Webhook (configure in Stripe Dashboard)

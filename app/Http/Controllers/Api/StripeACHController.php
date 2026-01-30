@@ -157,6 +157,7 @@ class StripeACHController extends Controller
                 'last4' => $bankAccount->last4 ?? '',
                 'account_type' => $bankAccount->account_type ?? '',
                 'account_holder_type' => $bankAccount->account_holder_type ?? '',
+                'status' => $bankAccount->status ?? '',
             ]);
 
         } catch (\Exception $e) {
@@ -632,6 +633,425 @@ class StripeACHController extends Controller
             Log::error('Backfill mandate failed', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * List PaymentIntents for a customer (replaces Charge::all)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function listPaymentIntents(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $limit = $request->input('limit', 100);
+            $startingAfter = $request->input('starting_after', null);
+
+            if (empty($customerId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id is required',
+                ], 400);
+            }
+
+            $params = [
+                'customer' => $customerId,
+                'limit' => $limit,
+            ];
+
+            if ($startingAfter) {
+                $params['starting_after'] = $startingAfter;
+            }
+
+            $paymentIntents = \Stripe\PaymentIntent::all($params);
+
+            return response()->json([
+                'success' => true,
+                'has_more' => $paymentIntents->has_more,
+                'data' => array_map(function($pi) {
+                    return [
+                        'id' => $pi->id,
+                        'amount' => $pi->amount,
+                        'currency' => $pi->currency,
+                        'status' => $pi->status,
+                        'customer' => $pi->customer,
+                        'payment_method' => $pi->payment_method,
+                        'created' => $pi->created,
+                    ];
+                }, $paymentIntents->data),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('List PaymentIntents failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * List PaymentMethods for a customer (replaces Customer::allSources)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function listPaymentMethods(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $type = $request->input('type', 'us_bank_account');
+            $limit = $request->input('limit', 10);
+
+            if (empty($customerId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id is required',
+                ], 400);
+            }
+
+            $paymentMethods = \Stripe\PaymentMethod::all([
+                'customer' => $customerId,
+                'type' => $type,
+                'limit' => $limit,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => array_map(function($pm) {
+                    $data = [
+                        'id' => $pm->id,
+                        'type' => $pm->type,
+                        'created' => $pm->created,
+                    ];
+
+                    if ($pm->type === 'us_bank_account') {
+                        $data['us_bank_account'] = [
+                            'bank_name' => $pm->us_bank_account->bank_name ?? '',
+                            'last4' => $pm->us_bank_account->last4 ?? '',
+                            'routing_number' => $pm->us_bank_account->routing_number ?? '',
+                            'account_type' => $pm->us_bank_account->account_type ?? '',
+                            'account_holder_type' => $pm->us_bank_account->account_holder_type ?? '',
+                        ];
+                    }
+
+                    return $data;
+                }, $paymentMethods->data),
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('List PaymentMethods failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Detach a PaymentMethod from a customer (replaces Customer::retrieveSource operations)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function detachPaymentMethod(Request $request): JsonResponse
+    {
+        try {
+            $paymentMethodId = $request->input('payment_method_id');
+
+            if (empty($paymentMethodId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'payment_method_id is required',
+                ], 400);
+            }
+
+            $paymentMethod = \Stripe\PaymentMethod::retrieve($paymentMethodId);
+            $paymentMethod->detach();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PaymentMethod detached successfully',
+                'payment_method_id' => $paymentMethodId,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Detach PaymentMethod failed', [
+                'error' => $e->getMessage(),
+                'payment_method_id' => $request->input('payment_method_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Attach a PaymentMethod to a customer (replaces Customer::createSource)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function attachPaymentMethod(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $paymentMethodId = $request->input('payment_method_id');
+
+            if (empty($customerId) || empty($paymentMethodId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id and payment_method_id are required',
+                ], 400);
+            }
+
+            $paymentMethod = \Stripe\PaymentMethod::retrieve($paymentMethodId);
+            $paymentMethod->attach([
+                'customer' => $customerId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PaymentMethod attached successfully',
+                'payment_method' => [
+                    'id' => $paymentMethod->id,
+                    'type' => $paymentMethod->type,
+                    'customer' => $paymentMethod->customer,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Attach PaymentMethod failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+                'payment_method_id' => $request->input('payment_method_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a PaymentMethod from a token and attach to customer (replaces Customer::createSource)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createPaymentMethodFromToken(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $token = $request->input('token');
+
+            if (empty($customerId) || empty($token)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id and token are required',
+                ], 400);
+            }
+
+            // Create PaymentMethod from token
+            $paymentMethod = \Stripe\PaymentMethod::create([
+                'type' => 'card',
+                'card' => ['token' => $token],
+            ]);
+
+            // Attach to customer
+            $paymentMethod->attach([
+                'customer' => $customerId,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'PaymentMethod created and attached successfully',
+                'payment_method' => [
+                    'id' => $paymentMethod->id,
+                    'type' => $paymentMethod->type,
+                    'customer' => $paymentMethod->customer,
+                    'card' => [
+                        'brand' => $paymentMethod->card->brand ?? '',
+                        'last4' => $paymentMethod->card->last4 ?? '',
+                    ],
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create PaymentMethod from token failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+                'token' => $request->input('token'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a SubscriptionSchedule
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createSubscriptionSchedule(Request $request): JsonResponse
+    {
+        try {
+            $customerId = $request->input('customer_id');
+            $startDate = $request->input('start_date');
+            $endBehavior = $request->input('end_behavior', 'cancel');
+            $phases = $request->input('phases', []);
+
+            if (empty($customerId) || empty($phases)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'customer_id and phases are required',
+                ], 400);
+            }
+
+            $params = [
+                'customer' => $customerId,
+                'end_behavior' => $endBehavior,
+                'phases' => $phases,
+            ];
+
+            if ($startDate) {
+                $params['start_date'] = $startDate;
+            }
+
+            $schedule = \Stripe\SubscriptionSchedule::create($params);
+
+            return response()->json([
+                'success' => true,
+                'schedule' => [
+                    'id' => $schedule->id,
+                    'status' => $schedule->status,
+                    'customer' => $schedule->customer,
+                    'phases' => $schedule->phases,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create SubscriptionSchedule failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $request->input('customer_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Get SubscriptionSchedule details
+     *
+     * @param string $scheduleId
+     * @return JsonResponse
+     */
+    public function getSubscriptionSchedule(string $scheduleId): JsonResponse
+    {
+        try {
+            $schedule = \Stripe\SubscriptionSchedule::retrieve($scheduleId);
+
+            return response()->json([
+                'success' => true,
+                'schedule' => $schedule,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Get SubscriptionSchedule failed', [
+                'error' => $e->getMessage(),
+                'schedule_id' => $scheduleId,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Update SubscriptionSchedule
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function updateSubscriptionSchedule(Request $request): JsonResponse
+    {
+        try {
+            $scheduleId = $request->input('schedule_id');
+            $params = $request->all();
+
+            if (empty($scheduleId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'schedule_id is required',
+                ], 400);
+            }
+
+            unset($params['schedule_id']);
+            $schedule = \Stripe\SubscriptionSchedule::update($scheduleId, $params);
+
+            return response()->json([
+                'success' => true,
+                'schedule' => $schedule,
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Update SubscriptionSchedule failed', [
+                'error' => $e->getMessage(),
+                'schedule_id' => $request->input('schedule_id'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Delete a Coupon (replaces Coupon::retrieve->delete)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function deleteCoupon(Request $request): JsonResponse
+    {
+        try {
+            $couponId = $request->input('coupon_id');
+
+            if (empty($couponId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'coupon_id is required',
+                ], 400);
+            }
+
+            $result = $this->stripeService->deleteCoupon($couponId);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Delete Coupon failed', [
+                'error' => $e->getMessage(),
+                'coupon_id' => $request->input('coupon_id'),
             ]);
             return response()->json([
                 'success' => false,
