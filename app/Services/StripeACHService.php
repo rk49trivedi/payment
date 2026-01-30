@@ -568,5 +568,181 @@ class StripeACHService
             ];
         }
     }
+
+    /**
+     * List invoices for a subscription
+     * Replaces Stripe\Invoice::all()
+     *
+     * @param string $subscriptionId The subscription ID to list invoices for
+     * @param int $limit Maximum number of invoices to return (default 100)
+     * @param string|null $startingAfter ID of the invoice to start pagination from
+     * @return array List of invoices with pagination info
+     */
+    public function listInvoices(string $subscriptionId, int $limit = 100, ?string $startingAfter = null): array
+    {
+        try {
+            $params = [
+                'subscription' => $subscriptionId,
+                'limit' => $limit,
+            ];
+
+            if ($startingAfter) {
+                $params['starting_after'] = $startingAfter;
+            }
+
+            $invoices = \Stripe\Invoice::all($params);
+
+            // Convert to array format for consistency
+            $invoiceData = [];
+            foreach ($invoices->data as $invoice) {
+                $invoiceData[] = [
+                    'id' => $invoice->id,
+                    'customer' => $invoice->customer,
+                    'subscription' => $invoice->subscription,
+                    'status' => $invoice->status,
+                    'amount_paid' => $invoice->amount_paid,
+                    'currency' => $invoice->currency,
+                    'created' => $invoice->created,
+                    'due_date' => $invoice->due_date,
+                    'paid' => $invoice->paid,
+                    'number' => $invoice->number,
+                    'hosted_invoice_url' => $invoice->hosted_invoice_url,
+                    'invoice_pdf' => $invoice->invoice_pdf,
+                    'lines' => $invoice->lines->data,
+                    'has_more' => $invoices->has_more,
+                    'object' => 'invoice',
+                ];
+            }
+
+            return [
+                'success' => true,
+                'data' => $invoiceData,
+                'has_more' => $invoices->has_more,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('List invoices failed', [
+                'subscription_id' => $subscriptionId,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'data' => [],
+                'has_more' => false,
+            ];
+        }
+    }
+
+    /**
+     * Update a Stripe Customer
+     */
+    public function updateCustomer(string $customerId, array $data): Customer
+    {
+        return Customer::update($customerId, $data);
+    }
+
+    /**
+     * Update a Subscription
+     */
+    public function updateSubscription(string $subscriptionId, array $data): Subscription
+    {
+        return Subscription::update($subscriptionId, $data);
+    }
+
+    /**
+     * Create a PaymentMethod (modern API for cards, ACH, etc.)
+     */
+    public function createPaymentMethod(array $params): PaymentMethod
+    {
+        return PaymentMethod::create($params);
+    }
+
+    /**
+     * Create a refund for a payment intent or charge
+     * Replaces Stripe\Refund::create()
+     *
+     * @param array $params Refund parameters
+     * @return array Refund data
+     */
+    public function createRefund(array $params): array
+    {
+        try {
+            $refund = \Stripe\Refund::create($params);
+
+            return [
+                'success' => true,
+                'refund' => [
+                    'id' => $refund->id,
+                    'amount' => $refund->amount,
+                    'currency' => $refund->currency,
+                    'charge' => $refund->charge,
+                    'payment_intent' => $refund->payment_intent,
+                    'status' => $refund->status,
+                    'reason' => $refund->reason,
+                    'created' => $refund->created,
+                ],
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('Create refund failed', [
+                'params' => $params,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+            ];
+        }
+    }
+
+    /**
+     * List refunds for a payment intent
+     * Replaces Stripe\Refund::all()
+     *
+     * @param array $params Query parameters
+     * @return array List of refunds
+     */
+    public function listRefunds(array $params): array
+    {
+        try {
+            $refunds = \Stripe\Refund::all($params);
+
+            $refundData = [];
+            foreach ($refunds->data as $refund) {
+                $refundData[] = [
+                    'id' => $refund->id,
+                    'amount' => $refund->amount,
+                    'currency' => $refund->currency,
+                    'charge' => $refund->charge,
+                    'payment_intent' => $refund->payment_intent,
+                    'status' => $refund->status,
+                    'reason' => $refund->reason,
+                    'created' => $refund->created,
+                ];
+            }
+
+            return [
+                'success' => true,
+                'data' => $refundData,
+                'has_more' => $refunds->has_more,
+            ];
+
+        } catch (\Exception $e) {
+            Log::error('List refunds failed', [
+                'params' => $params,
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return [
+                'success' => false,
+                'error' => $e->getMessage(),
+                'data' => [],
+                'has_more' => false,
+            ];
+        }
+    }
 }
 

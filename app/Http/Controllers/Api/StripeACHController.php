@@ -1059,5 +1059,356 @@ class StripeACHController extends Controller
             ], 400);
         }
     }
+
+    /**
+     * List invoices for a subscription
+     * Replaces Stripe\Invoice::all()
+     */
+    public function listInvoices(Request $request): JsonResponse
+    {
+        try {
+            $subscriptionId = $request->input('subscription');
+            $limit = $request->input('limit', 100);
+            $startingAfter = $request->input('starting_after');
+
+            if (empty($subscriptionId)) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'subscription is required',
+                ], 400);
+            }
+
+            $result = $this->stripeService->listInvoices($subscriptionId, $limit, $startingAfter);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('List Invoices failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a Customer (replaces \Stripe\Customer::create)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createCustomer(Request $request): JsonResponse
+    {
+        try {
+            $params = $request->all();
+
+            if (empty($params['email'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'email is required',
+                ], 400);
+            }
+
+            $customer = $this->stripeService->createCustomer($params);
+
+            return response()->json([
+                'success' => true,
+                'customer' => [
+                    'id' => $customer->id,
+                    'email' => $customer->email,
+                    'name' => $customer->name,
+                    'metadata' => $customer->metadata,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create Customer failed', [
+                'error' => $e->getMessage(),
+                'email' => $request->input('email'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Update a Customer (replaces \Stripe\Customer::update)
+     *
+     * @param Request $request
+     * @param string $id
+     * @return JsonResponse
+     */
+    public function updateCustomer(Request $request, string $id): JsonResponse
+    {
+        try {
+            $params = $request->all();
+            $customer = $this->stripeService->updateCustomer($id, $params);
+
+            return response()->json([
+                'success' => true,
+                'customer' => [
+                    'id' => $customer->id,
+                    'email' => $customer->email,
+                    'name' => $customer->name,
+                    'metadata' => $customer->metadata,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Update Customer failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Retrieve a Customer (replaces \Stripe\Customer::retrieve)
+     *
+     * @param string $id
+     * @return JsonResponse
+     */
+    public function retrieveCustomer(string $id): JsonResponse
+    {
+        try {
+            $customer = $this->stripeService->getCustomer($id);
+
+            return response()->json([
+                'success' => true,
+                'customer' => [
+                    'id' => $customer->id,
+                    'email' => $customer->email,
+                    'name' => $customer->name,
+                    'metadata' => $customer->metadata,
+                    'invoice_settings' => $customer->invoice_settings,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Retrieve Customer failed', [
+                'error' => $e->getMessage(),
+                'customer_id' => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Retrieve a Subscription (replaces \Stripe\Subscription::retrieve)
+     *
+     * @param string $id
+     * @return JsonResponse
+     */
+    public function retrieveSubscription(string $id): JsonResponse
+    {
+        try {
+            $subscription = $this->stripeService->getSubscription($id);
+
+            return response()->json([
+                'success' => true,
+                'subscription' => [
+                    'id' => $subscription->id,
+                    'customer' => $subscription->customer,
+                    'status' => $subscription->status,
+                    'current_period_start' => $subscription->current_period_start,
+                    'current_period_end' => $subscription->current_period_end,
+                    'cancel_at_period_end' => $subscription->cancel_at_period_end,
+                    'items' => $subscription->items->data,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Retrieve Subscription failed', [
+                'error' => $e->getMessage(),
+                'subscription_id' => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Update a Subscription (replaces \Stripe\Subscription::update)
+     *
+     * @param Request $request
+     * @param string $id
+     * @return JsonResponse
+     */
+    public function updateSubscription(Request $request, string $id): JsonResponse
+    {
+        try {
+            $params = $request->all();
+            $subscription = $this->stripeService->updateSubscription($id, $params);
+
+            return response()->json([
+                'success' => true,
+                'subscription' => [
+                    'id' => $subscription->id,
+                    'customer' => $subscription->customer,
+                    'status' => $subscription->status,
+                    'current_period_start' => $subscription->current_period_start,
+                    'current_period_end' => $subscription->current_period_end,
+                    'cancel_at_period_end' => $subscription->cancel_at_period_end,
+                    'items' => $subscription->items->data,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Update Subscription failed', [
+                'error' => $e->getMessage(),
+                'subscription_id' => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a PaymentMethod (replaces Customer::createSource for modern API)
+     *
+     * @param Request $request
+     * @return JsonResponse
+     */
+    public function createPaymentMethod(Request $request): JsonResponse
+    {
+        try {
+            $params = $request->all();
+
+            if (empty($params['type'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'type is required (e.g., card, us_bank_account)',
+                ], 400);
+            }
+
+            $paymentMethod = $this->stripeService->createPaymentMethod($params);
+
+            return response()->json([
+                'success' => true,
+                'payment_method' => [
+                    'id' => $paymentMethod->id,
+                    'type' => $paymentMethod->type,
+                    'card' => $paymentMethod->card,
+                    'us_bank_account' => $paymentMethod->us_bank_account,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Create PaymentMethod failed', [
+                'error' => $e->getMessage(),
+                'type' => $request->input('type'),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Retrieve a PaymentMethod (replaces Customer::retrieveSource)
+     *
+     * @param string $id
+     * @return JsonResponse
+     */
+    public function retrievePaymentMethod(string $id): JsonResponse
+    {
+        try {
+            $paymentMethod = $this->stripeService->getPaymentMethod($id);
+
+            return response()->json([
+                'success' => true,
+                'payment_method' => [
+                    'id' => $paymentMethod->id,
+                    'type' => $paymentMethod->type,
+                    'card' => $paymentMethod->card,
+                    'us_bank_account' => $paymentMethod->us_bank_account,
+                    'billing_details' => $paymentMethod->billing_details,
+                ],
+            ]);
+
+        } catch (\Exception $e) {
+            Log::error('Retrieve PaymentMethod failed', [
+                'error' => $e->getMessage(),
+                'payment_method_id' => $id,
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * Create a refund for a payment intent or charge
+     * Replaces Stripe\Refund::create()
+     */
+    public function createRefund(Request $request): JsonResponse
+    {
+        try {
+            $params = $request->all();
+
+            if (empty($params['payment_intent']) && empty($params['charge'])) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'payment_intent or charge is required',
+                ], 400);
+            }
+
+            $result = $this->stripeService->createRefund($params);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('Create Refund failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
+
+    /**
+     * List refunds for a payment intent
+     * Replaces Stripe\Refund::all()
+     */
+    public function listRefunds(Request $request): JsonResponse
+    {
+        try {
+            $params = $request->all();
+            $result = $this->stripeService->listRefunds($params);
+
+            return response()->json($result);
+
+        } catch (\Exception $e) {
+            Log::error('List Refunds failed', [
+                'error' => $e->getMessage(),
+                'trace' => $e->getTraceAsString(),
+            ]);
+            return response()->json([
+                'success' => false,
+                'error' => $e->getMessage(),
+            ], 400);
+        }
+    }
 }
 

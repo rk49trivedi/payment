@@ -57,6 +57,26 @@ Route::prefix('stripe')->group(function () {
     // Coupon operations (replaces Coupon::all, Coupon::retrieve->delete, Coupon::create)
     Route::post('/create-coupon', [StripeACHController::class, 'createCoupon']);
     Route::post('/delete-coupon', [StripeACHController::class, 'deleteCoupon']);
+
+    // Invoice operations (replaces Stripe\Invoice::all)
+    Route::post('/list-invoices', [StripeACHController::class, 'listInvoices']);
+
+    // Customer operations (replaces Customer::create, Customer::retrieve, Customer::update)
+    Route::post('/create-customer', [StripeACHController::class, 'createCustomer']);
+    Route::post('/update-customer/{id}', [StripeACHController::class, 'updateCustomer']);
+    Route::get('/retrieve-customer/{id}', [StripeACHController::class, 'retrieveCustomer']);
+
+    // Subscription operations (replaces Subscription::retrieve, Subscription::update)
+    Route::get('/retrieve-subscription/{id}', [StripeACHController::class, 'retrieveSubscription']);
+    Route::post('/update-subscription/{id}', [StripeACHController::class, 'updateSubscription']);
+
+    // PaymentMethod operations (replaces Customer::createSource, Customer::retrieveSource)
+    Route::post('/create-payment-method', [StripeACHController::class, 'createPaymentMethod']);
+    Route::get('/retrieve-payment-method/{id}', [StripeACHController::class, 'retrievePaymentMethod']);
+
+    // Refund operations (replaces Stripe\Refund::create, Stripe\Refund::all)
+    Route::post('/create-refund', [StripeACHController::class, 'createRefund']);
+    Route::post('/list-refunds', [StripeACHController::class, 'listRefunds']);
 });
 
 // Stripe Webhook (configure in Stripe Dashboard)
