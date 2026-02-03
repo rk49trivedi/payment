@@ -25,6 +25,7 @@ class StripeACHController extends Controller
     {
         try {
             $customerId = $request->input('customer_id_stripe');
+            $paymentMethodTypes = $request->input('payment_method_types', ['us_bank_account']);
 
             // If no customer exists yet, create one
             if (empty($customerId)) {
@@ -39,8 +40,8 @@ class StripeACHController extends Controller
                 $customerId = $customer->id;
             }
 
-            // Create SetupIntent for ACH with Financial Connections
-            $setupIntent = $this->stripeService->createACHSetupIntent($customerId, [
+            // Create SetupIntent with dynamic payment method types
+            $setupIntent = $this->stripeService->createSetupIntent($customerId, $paymentMethodTypes, [
                 'permissions' => ['payment_method', 'balances'],
                 'verification_method' => 'automatic',
             ]);

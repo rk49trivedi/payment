@@ -9,9 +9,7 @@ use Stripe\PaymentIntent;
 use Stripe\PaymentMethod;
 use Stripe\Subscription;
 use Stripe\Price;
-use Stripe\Source;
 use Stripe\Invoice;
-use Stripe\Token;
 use Stripe\Coupon;
 use Illuminate\Support\Facades\Log;
 
@@ -80,13 +78,13 @@ class StripeACHService
     }
 
     /**
-     * Create a SetupIntent for ACH bank account collection via Financial Connections
+     * Create a SetupIntent for bank account collection via Financial Connections
      */
-    public function createACHSetupIntent(string $customerId, array $options = []): SetupIntent
+    public function createSetupIntent(string $customerId, array $paymentMethodTypes = ['us_bank_account'], array $options = []): SetupIntent
     {
         return SetupIntent::create([
             'customer' => $customerId,
-            'payment_method_types' => ['us_bank_account'],
+            'payment_method_types' => $paymentMethodTypes,
             'payment_method_options' => [
                 'us_bank_account' => [
                     'financial_connections' => [
@@ -96,6 +94,15 @@ class StripeACHService
                 ],
             ],
         ]);
+    }
+
+    /**
+     * Create a SetupIntent for ACH bank account collection via Financial Connections
+     * @deprecated Use createSetupIntent() instead
+     */
+    public function createACHSetupIntent(string $customerId, array $options = []): SetupIntent
+    {
+        return $this->createSetupIntent($customerId, ['us_bank_account'], $options);
     }
 
     /**
@@ -116,6 +123,7 @@ class StripeACHService
 
     /**
      * Create a PaymentIntent for ACH payment (replaces Charge::create)
+     * Uses automatic_payment_methods as recommended by Stripe for 2026
      */
     public function createACHPaymentIntent(
         string $customerId,
@@ -128,14 +136,18 @@ class StripeACHService
             'amount' => $amountCents,
             'currency' => 'usd',
             'customer' => $customerId,
-            'payment_method_types' => ['us_bank_account'],
             'metadata' => $metadata,
+            // ✅ Stripe recommended modern approach for 2026
+            'automatic_payment_methods' => [
+                'enabled' => true,
+            ],
         ];
 
         if ($paymentMethodId) {
             $params['payment_method'] = $paymentMethodId;
             if ($confirm) {
                 $params['confirm'] = true;
+                $params['setup_future_usage'] = 'off_session';
             }
         }
 
@@ -144,7 +156,8 @@ class StripeACHService
 
     /**
      * Create a PaymentIntent for card payment (replaces Charge::create for cards)
-     * Supports both card and ACH payments based on payment_method_types
+     * Uses automatic_payment_methods as recommended by Stripe for 2026
+     * Supports both card and ACH payments automatically
      */
     public function createPaymentIntent(
         string $customerId,
@@ -158,8 +171,11 @@ class StripeACHService
             'amount' => $amountCents,
             'currency' => 'usd',
             'customer' => $customerId,
-            'payment_method_types' => $paymentMethodTypes,
             'metadata' => $metadata,
+            // ✅ Stripe recommended modern approach for 2026
+            'automatic_payment_methods' => [
+                'enabled' => true,
+            ],
         ];
 
         if ($paymentMethodId) {
@@ -170,6 +186,7 @@ class StripeACHService
         // Stripe will use customer's default payment method in this case
         if ($confirm) {
             $params['confirm'] = true;
+            $params['setup_future_usage'] = 'off_session';
         }
 
         return PaymentIntent::create($params);
