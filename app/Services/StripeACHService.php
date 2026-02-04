@@ -123,7 +123,8 @@ class StripeACHService
 
     /**
      * Create a PaymentIntent for ACH payment (replaces Charge::create)
-     * Uses automatic_payment_methods as recommended by Stripe for 2026
+     * For ACH, prefer explicit payment_method_types=['us_bank_account'] to avoid
+     * Dashboard-enabled payment method mismatches when automatic payment methods are enabled.
      */
     public function createACHPaymentIntent(
         string $customerId,
@@ -137,17 +138,15 @@ class StripeACHService
             'currency' => 'usd',
             'customer' => $customerId,
             'metadata' => $metadata,
-            // ✅ Stripe recommended modern approach for 2026
-            'automatic_payment_methods' => [
-                'enabled' => true,
-            ],
+            // Explicit for ACH to ensure only ACH is attempted
+            'payment_method_types' => ['us_bank_account'],
         ];
 
         if ($paymentMethodId) {
             $params['payment_method'] = $paymentMethodId;
             if ($confirm) {
                 $params['confirm'] = true;
-                $params['setup_future_usage'] = 'off_session';
+                $params['off_session'] = true;
             }
         }
 
@@ -156,8 +155,10 @@ class StripeACHService
 
     /**
      * Create a PaymentIntent for card payment (replaces Charge::create for cards)
-     * Uses automatic_payment_methods as recommended by Stripe for 2026
-     * Supports both card and ACH payments automatically
+     * Supports explicit payment method types (card vs ACH) based on caller.
+     * If payment method types are provided, we prefer explicit `payment_method_types`
+     * to avoid Dashboard-enabled payment method mismatches when `automatic_payment_methods`
+     * is enabled.
      */
     public function createPaymentIntent(
         string $customerId,
@@ -172,11 +173,17 @@ class StripeACHService
             'currency' => 'usd',
             'customer' => $customerId,
             'metadata' => $metadata,
-            // ✅ Stripe recommended modern approach for 2026
-            'automatic_payment_methods' => [
-                'enabled' => true,
-            ],
         ];
+
+        // Prefer explicit payment method types when provided
+        if (!empty($paymentMethodTypes)) {
+            $params['payment_method_types'] = $paymentMethodTypes;
+        } else {
+            // Fallback: automatic methods (broadly enabled in Dashboard)
+            $params['automatic_payment_methods'] = [
+                'enabled' => true,
+            ];
+        }
 
         if ($paymentMethodId) {
             $params['payment_method'] = $paymentMethodId;
@@ -186,7 +193,7 @@ class StripeACHService
         // Stripe will use customer's default payment method in this case
         if ($confirm) {
             $params['confirm'] = true;
-            $params['setup_future_usage'] = 'off_session';
+            $params['off_session'] = true;
         }
 
         return PaymentIntent::create($params);
