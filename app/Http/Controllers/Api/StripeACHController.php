@@ -1338,6 +1338,7 @@ class StripeACHController extends Controller
                 'payment_method' => [
                     'id' => $paymentMethod->id,
                     'type' => $paymentMethod->type,
+                    'customer' => $paymentMethod->customer ?? null,
                     'card' => $paymentMethod->card,
                     'us_bank_account' => $paymentMethod->us_bank_account,
                     'billing_details' => $paymentMethod->billing_details,
